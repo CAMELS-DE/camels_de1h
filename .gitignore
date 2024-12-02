@@ -1,2 +1,5 @@
 input_data
 output_data
+
+__pycache__/
+camels_de1h.egg-info/
