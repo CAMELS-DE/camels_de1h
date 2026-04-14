@@ -43,10 +43,8 @@ class Station1h():
             self.data_path = data_file
         else:
             self.data_path = None
-
-        # TODO: replace all below where camelsp is used with infomation from self.metadata
         
-        # go for metadata fields if available
+        # set metadata if available / station was already processed
         if self.has_metadata:
             # metadata
             meta = self.get_metadata()
@@ -59,7 +57,7 @@ class Station1h():
             self.provider_id = self.metadata.provider_id.values[0]
 
             # water body name
-            self.water_body_name = self.metadata.water_body_name.values[0]
+            self.waterbody_name = self.metadata.waterbody_name.values[0]
 
             # federal state
             self.bl = self.metadata.federal_state.values[0]
@@ -80,7 +78,7 @@ class Station1h():
             self.metadata = None
             self.name = None
             self.provider_id = None
-            self.water_body_name = None
+            self.waterbody_name = None
             self.bl = None
             self.lat = None
             self.lon = None
@@ -115,7 +113,7 @@ class Station1h():
         The function also checks the data for the following:
         * duplicated dates
         * sorted dates
-        * missing dates
+        * missing dates (gaps)
         * additional columns
                 
         Note that date has to be in UTC+0.
@@ -145,7 +143,7 @@ class Station1h():
             raise ValueError(f"{self.gauge_id}: Data is not sorted by date.")
         
         # check if the date increases by one hour each timestep
-        if not (data.index.to_series().diff().iloc[1:] == pd.Timedelta("1H")).all():
+        if not (data.index.to_series().diff().iloc[1:] == pd.Timedelta("1h")).all():
             raise ValueError(f"{self.gauge_id}: Not all dates are in hourly resolution.")
         
         # check if date is in UTC+0
@@ -160,7 +158,7 @@ class Station1h():
         # create Bundesland and Station directories
         self.output_path.mkdir(parents=True, exist_ok=True)
 
-        data.to_csv(self.output_path / f"{self.gauge_id}_data.csv", index=True, index_label="date")        
+        data.to_csv(self.output_path / f"{self.gauge_id}_data.csv", index=True, index_label="date")
 
     def get_data(self, date_index: bool = False) -> pd.DataFrame:
         """
@@ -173,7 +171,7 @@ class Station1h():
         if self.data_path is None:
             raise FileNotFoundError(f"No data found for station {self.gauge_id}")
 
-        data = pd.read_csv(self.data_path, parse_dates=True)
+        data = pd.read_csv(self.data_path, parse_dates=["date"])
 
         if date_index:
             data = data.set_index("date")
@@ -196,7 +194,7 @@ class Station1h():
         
         metadata.to_csv(self.output_path / f"{self.gauge_id}_raw_metadata.csv", index=False)
 
-    def save_metadata(self, gauge_id: str, provider_id: str, gauge_name: str, water_body_name: str, 
+    def save_metadata(self, gauge_id: str, provider_id: str, gauge_name: str, waterbody_name: str, 
                       federal_state: str, gauge_lon: float, gauge_lat: float, gauge_easting: float, 
                       gauge_northing: float, gauge_elev_metadata: float, area_metadata: float,
                       part_of_camelsp: bool):
@@ -230,7 +228,7 @@ class Station1h():
             "gauge_id": [gauge_id],
             "provider_id": [provider_id],
             "gauge_name": [gauge_name],
-            "water_body_name": [water_body_name],
+            "waterbody_name": [waterbody_name],
             "federal_state": [federal_state],
             "lon": [gauge_lon],
             "lat": [gauge_lat],
@@ -278,13 +276,13 @@ class Station1h():
         
         return pd.read_csv(self.output_path / f"{self.gauge_id}_metadata.csv", dtype={"provider_id": str})
     
-    def plot(self, data_type: str = "both") -> go.Figure:
+    def plot(self, variable: str = "both") -> go.Figure:
         """
         Create an interactive Plotly plot of discharge and/or water level data.
 
         Parameters
         ----------
-        data_type : str, optional
+        variable : str, optional
             Type of data to plot. Options: "q" (discharge), "w" (water level), 
             or "both" (default)
 
@@ -294,15 +292,15 @@ class Station1h():
             Plotly figure object containing the interactive plot
 
         """
-        if data_type.lower() not in ["q", "w", "both"]:
-            raise ValueError('data_type must be one of "q", "w", or "both"')
+        if variable.lower() not in ["q", "w", "both"]:
+            raise ValueError('variable must be one of "q", "w", or "both"')
 
         df = self.get_data(date_index=True)
         
         fig = go.Figure()
 
         # Add discharge trace
-        if data_type.lower() in ["q", "both"]:
+        if variable.lower() in ["q", "both"]:
             fig.add_trace(
                 go.Scatter(
                     x=df.index,
@@ -316,14 +314,14 @@ class Station1h():
             )
 
         # Add water level trace
-        if data_type.lower() in ["w", "both"]:
+        if variable.lower() in ["w", "both"]:
             fig.add_trace(
                 go.Scatter(
                     x=df.index,
                     y=df["water_level_obs"],
                     name="Water Level",
                     line=dict(color="#ff7f0e", width=1.5),
-                    yaxis="y2" if data_type.lower() == "both" else "y",
+                    yaxis="y2" if variable.lower() == "both" else "y",
                     hovertemplate="<b>Date</b>: %{x}<br>" +
                                 "<b>Water Level</b>: %{y:.1f} cm<br><extra></extra>"
                 )
@@ -331,8 +329,8 @@ class Station1h():
 
         # Update layout
         title = f"Station {self.gauge_id}: "
-        title += "Discharge & Water Level" if data_type.lower() == "both" else \
-                "Discharge" if data_type.lower() == "q" else "Water Level"
+        title += "Discharge & Water Level" if variable.lower() == "both" else \
+                "Discharge" if variable.lower() == "q" else "Water Level"
         
         fig.update_layout(
             template="simple_white",
@@ -351,7 +349,7 @@ class Station1h():
                 title_font=dict(size=14)
             ),
             yaxis=dict(
-                title="Discharge [m³/s]" if data_type.lower() in ["q", "both"] else "Water Level [cm]",
+                title="Discharge [m³/s]" if variable.lower() in ["q", "both"] else "Water Level [cm]",
                 side="left",
                 showgrid=True,
                 gridwidth=1,
@@ -376,7 +374,7 @@ class Station1h():
         )
 
         # Add secondary y-axis
-        if data_type.lower() == "both":
+        if variable.lower() == "both":
             fig.update_layout(
                 yaxis2=dict(
                     title="Water Level [cm]",
