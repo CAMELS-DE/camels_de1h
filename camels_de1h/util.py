@@ -62,7 +62,7 @@ def get_metadata1h():
     Returns the metadata of all stations.
     
     """
-    return pd.read_csv(Path(INPUT_PATH) / "metadata" / "metadata1h.csv")
+    return pd.read_csv(Path(OUTPUT_PATH) / "metadata" / "metadata1h.csv")
 
 def get_nuts_id_from_provider_id(provider_id: str, bl: str, add_missing: bool = False):
     """
